@@ -1,5 +1,6 @@
 node_modules/
 dist/
 ios/dist/
+plugin/build/
 *.xcframework
 *.zip
