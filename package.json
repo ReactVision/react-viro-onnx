@@ -1,0 +1,16 @@
+{
+  "name": "@reactvision/react-viro-onnx",
+  "version": "1.0.0",
+  "description": "ONNX Runtime inference provider for @reactvision/react-viro ViroObjectDetector",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "setup": "bash scripts/download_onnxruntime.sh"
+  },
+  "keywords": ["react-native", "ar", "viro", "onnx", "yoloe", "object-detection"],
+  "license": "MIT",
+  "peerDependencies": {
+    "@reactvision/react-viro": ">=2.56.0",
+    "react-native": ">=0.81.0"
+  }
+}
