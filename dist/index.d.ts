@@ -1,28 +1,16 @@
 /**
  * ViroONNX — ONNX Runtime inference provider for ViroObjectDetector.
  *
- * Call `ViroONNX.install()` once at app startup (before mounting any
- * ViroObjectDetector). The native module loads ONNX Runtime and registers
- * itself as the inference provider. From that point on, ViroObjectDetector
- * runs real YOLOE inference on every camera frame.
+ * The provider is registered automatically when the native pod is linked
+ * (via +load on iOS / static initializer on Android). No manual install()
+ * call is required — just having the pod in your Podfile is enough.
  *
- * @example
- * ```tsx
- * // App.tsx
- * import { ViroONNX } from '@reactvision/react-viro-onnx';
- * ViroONNX.install();
- *
- * // Anywhere in your app:
- * <ViroObjectDetector model={require('./yoloe-26n.onnx')} mode="prompt-free" ... />
- * ```
+ * install() is kept for backward compatibility but is now a no-op in JS.
  */
 export declare const ViroONNX: {
-    /**
-     * Installs the ONNX Runtime inference provider into ViroObjectDetector.
-     * Safe to call multiple times (no-op after first call).
-     */
+    /** No-op — registration happens automatically via +load when pod is linked. */
     install(): void;
-    /** Returns the ONNX Runtime version string, e.g. "1.20.0". */
+    /** Returns the ONNX Runtime version string linked into the app, e.g. "1.20.0". */
     getVersion(): string;
 };
 //# sourceMappingURL=index.d.ts.map

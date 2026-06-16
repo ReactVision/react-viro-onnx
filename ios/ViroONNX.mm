@@ -168,4 +168,10 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getVersion) {
 
 + (BOOL)requiresMainQueueSetup { return NO; }
 
+// Auto-register when the pod is linked — no JS install() call needed.
+// +load is called before main(), as soon as the class is loaded by the runtime.
++ (void)load {
+    [[self class] install];
+}
+
 @end
