@@ -4,20 +4,22 @@
 //
 //  Copyright © 2026 ReactVision. All rights reserved.
 
-#import <React/RCTBridgeModule.h>
+#import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
 /**
- * ViroONNX — native module that installs ONNX Runtime as the inference
- * provider for VRTObjectDetectorView.
- *
- * Call ViroONNX.install() once from JS before mounting any ViroObjectDetector.
+ * ViroONNX — registers ONNX Runtime (C++ API) as the inference provider
+ * for VRTObjectDetectorView. Registration happens automatically via +load
+ * when the ViroReactONNX framework is embedded in the app. No JS call needed.
  */
-@interface ViroONNX : NSObject <RCTBridgeModule>
+@interface ViroONNX : NSObject
 
 /** Registers the ORT inference provider with VRTObjectDetectorView (idempotent). */
 + (void)install;
+
+/** Returns the linked ONNX Runtime version string, e.g. "1.20.0". */
++ (NSString *)ortVersion;
 
 @end
 

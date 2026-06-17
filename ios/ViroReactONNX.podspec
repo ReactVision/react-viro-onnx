@@ -41,8 +41,13 @@ Pod::Spec.new do |s|
   s.pod_target_xcconfig = {
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
     'OTHER_CPLUSPLUSFLAGS'        => '$(inherited) -std=c++17',
+    # CocoaPods does not always propagate vendored xcframework headers to the pod's
+    # own compilation unit — add the parent dir explicitly so the compiler can find
+    # onnxruntime.xcframework/ios-arm64/onnxruntime.framework/Headers/*.h
+    'FRAMEWORK_SEARCH_PATHS'      => '$(inherited) "$(PODS_TARGET_SRCROOT)/dist/Frameworks"',
   }
 
-  s.dependency 'React-Core'
-  s.dependency 'ViroReact'
+  # No React or ViroReact pod dependencies — this is a plain iOS framework.
+  # VRTObjectDetectorView is located at runtime via NSClassFromString (avoids the
+  # libViroReact.a static/dynamic conflict). React symbols resolved from host app.
 end
