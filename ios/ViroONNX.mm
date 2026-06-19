@@ -15,6 +15,7 @@
 #import <onnxruntime/onnxruntime_cxx_api.h>
 
 #include <map>
+#include <memory>
 #include <string>
 
 // ---------------------------------------------------------------------------
@@ -24,20 +25,25 @@
 static const int kModelInputSize = 640;
 static const int kNumProposals   = 300;
 static const int kProposalDim    = 38;
+static const int kMaxDetections  = 5;
 
 // ---------------------------------------------------------------------------
 // Block type — must match VRTInferenceBlock in VRTObjectDetectorView.h exactly.
-// Declared locally: no ViroReact import needed.
 // ---------------------------------------------------------------------------
 
 typedef NSArray<NSDictionary *>*(^VROInferenceBlock)(NSString*, const float*, int, float);
 
 // ---------------------------------------------------------------------------
-// ORT environment + session cache
+// ORT environment + session cache (shared_ptr for thread-safe lifetime)
 // ---------------------------------------------------------------------------
 
-static Ort::Env  *gEnv = nullptr;
-static std::map<std::string, Ort::Session *> gSessionMap;
+static Ort::Env *gEnv = nullptr;
+// shared_ptr: runInference holds a local copy — session survives even if
+// the map is cleared while inference is in flight (no use-after-free).
+static std::map<std::string, std::shared_ptr<Ort::Session>> gSessionMap;
+// Class names from ONNX model metadata, keyed by model path.
+// Access only on gSessionQueue.
+static NSMutableDictionary<NSString *, NSArray<NSString *> *> *gClassNamesCache;
 static dispatch_queue_t gSessionQueue;
 
 static void ensureEnv() {
@@ -45,8 +51,7 @@ static void ensureEnv() {
     dispatch_once(&once, ^{
         gSessionQueue = dispatch_queue_create("com.reactvision.onnx.sessions",
                                               DISPATCH_QUEUE_SERIAL);
-        // Set the C++ API pointer before any Ort:: class usage.
-        // Equivalent to Ort::InitApi() which doesn't exist in onnxruntime-c headers.
+        gClassNamesCache = [NSMutableDictionary dictionary];
         if (!Ort::Global<void>::api_) {
             Ort::Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
         }
@@ -54,17 +59,105 @@ static void ensureEnv() {
     });
 }
 
-static Ort::Session * _Nullable sessionForModelPath(NSString *modelPath) {
+// ---------------------------------------------------------------------------
+// Class name parsing — Ultralytics ONNX metadata: {0: 'name', 1: 'name', ...}
+// ---------------------------------------------------------------------------
+
+static NSArray<NSString *> *parseClassNames(const char *raw) {
+    if (!raw) return nil;
+    NSString *src = [NSString stringWithUTF8String:raw];
+    NSError *err  = nil;
+    NSRegularExpression *re = [NSRegularExpression
+        regularExpressionWithPattern:@"(\\d+):\\s*['\"]([^'\"]*)['\"]"
+        options:0 error:&err];
+    if (!re || err) return nil;
+    NSArray<NSTextCheckingResult *> *hits =
+        [re matchesInString:src options:0 range:NSMakeRange(0, src.length)];
+    if (!hits.count) return nil;
+
+    NSUInteger maxIdx = 0;
+    for (NSTextCheckingResult *h in hits) {
+        NSUInteger idx = (NSUInteger)[[src substringWithRange:[h rangeAtIndex:1]] integerValue];
+        if (idx > maxIdx) maxIdx = idx;
+    }
+    NSMutableArray<NSString *> *names = [NSMutableArray arrayWithCapacity:maxIdx + 1];
+    for (NSUInteger i = 0; i <= maxIdx; i++) [names addObject:@""];
+    for (NSTextCheckingResult *h in hits) {
+        NSUInteger idx = (NSUInteger)[[src substringWithRange:[h rangeAtIndex:1]] integerValue];
+        if (idx < names.count) names[idx] = [src substringWithRange:[h rangeAtIndex:2]];
+    }
+    return [names copy];
+}
+
+// Call inside dispatch_sync on gSessionQueue.
+static void loadClassNamesIfNeeded(NSString *modelPath,
+                                   const std::shared_ptr<Ort::Session>& session) {
+    if (gClassNamesCache[modelPath]) return;
+    try {
+        Ort::AllocatorWithDefaultOptions alloc;
+        auto meta = session->GetModelMetadata();
+        auto ptr  = meta.LookupCustomMetadataMapAllocated("names", alloc);
+        if (ptr) {
+            NSArray<NSString *> *names = parseClassNames(ptr.get());
+            if (names) {
+                gClassNamesCache[modelPath] = names;
+                NSLog(@"[ViroONNX] %zu class names loaded from model metadata.", (size_t)names.count);
+            }
+        }
+    } catch (...) {
+        NSLog(@"[ViroONNX] could not read class names from model metadata.");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NMS — greedy IoU suppression; input must be sorted by confidence descending
+// ---------------------------------------------------------------------------
+
+static float boxIoU(NSDictionary *a, NSDictionary *b) {
+    NSDictionary *ba = a[@"boundingBox"], *bb = b[@"boundingBox"];
+    float ax1 = [ba[@"x"] floatValue],  ay1 = [ba[@"y"] floatValue];
+    float ax2 = ax1 + [ba[@"width"] floatValue], ay2 = ay1 + [ba[@"height"] floatValue];
+    float bx1 = [bb[@"x"] floatValue],  by1 = [bb[@"y"] floatValue];
+    float bx2 = bx1 + [bb[@"width"] floatValue], by2 = by1 + [bb[@"height"] floatValue];
+    float iw  = MAX(0.f, MIN(ax2, bx2) - MAX(ax1, bx1));
+    float ih  = MAX(0.f, MIN(ay2, by2) - MAX(ay1, by1));
+    float inter = iw * ih;
+    if (inter == 0.f) return 0.f;
+    float ua = (ax2-ax1)*(ay2-ay1) + (bx2-bx1)*(by2-by1) - inter;
+    return ua > 0.f ? inter / ua : 0.f;
+}
+
+static NSArray<NSDictionary *> *applyNMS(NSMutableArray<NSDictionary *> *dets,
+                                         float iouThreshold) {
+    NSMutableArray *keep = [NSMutableArray arrayWithCapacity:dets.count];
+    NSMutableIndexSet *suppressed = [NSMutableIndexSet indexSet];
+    for (NSUInteger i = 0; i < dets.count; i++) {
+        if ([suppressed containsIndex:i]) continue;
+        [keep addObject:dets[i]];
+        for (NSUInteger j = i + 1; j < dets.count; j++) {
+            if (![suppressed containsIndex:j] && boxIoU(dets[i], dets[j]) > iouThreshold)
+                [suppressed addIndex:j];
+        }
+    }
+    return keep;
+}
+
+// Returns a shared_ptr — caller holds a strong reference for the duration of inference.
+static std::shared_ptr<Ort::Session> sessionForModelPath(NSString *modelPath) {
     ensureEnv();
-    __block Ort::Session *session = nullptr;
+    __block std::shared_ptr<Ort::Session> session;
     dispatch_sync(gSessionQueue, ^{
         auto it = gSessionMap.find(modelPath.UTF8String);
-        if (it != gSessionMap.end()) { session = it->second; return; }
+        if (it != gSessionMap.end()) {
+            session = it->second; // copy: bumps ref count
+            return;
+        }
         try {
             Ort::SessionOptions opts;
-            Ort::Session *s = new Ort::Session(*gEnv, modelPath.UTF8String, opts);
+            auto s = std::make_shared<Ort::Session>(*gEnv, modelPath.UTF8String, opts);
             gSessionMap[modelPath.UTF8String] = s;
             session = s;
+            loadClassNamesIfNeeded(modelPath, s);  // reads metadata once per model
             NSLog(@"[ViroONNX] model loaded: %@", modelPath);
         } catch (const Ort::Exception &e) {
             NSLog(@"[ViroONNX] failed to load model '%@': %s", modelPath, e.what());
@@ -78,10 +171,16 @@ static Ort::Session * _Nullable sessionForModelPath(NSString *modelPath) {
 // ---------------------------------------------------------------------------
 
 static NSArray<NSDictionary *> *runInference(
-    NSString *modelPath, const float *nchwData, int inputSize, float confThreshold)
+    NSString *modelPath,
+    const float *nchwData,
+    int inputSize,
+    float confThreshold)
 {
-    Ort::Session *session = sessionForModelPath(modelPath);
+    // Local shared_ptr: session stays alive for the entire function even if
+    // gSessionMap is cleared concurrently (e.g. detector unmounting).
+    std::shared_ptr<Ort::Session> session = sessionForModelPath(modelPath);
     if (!session) return @[];
+
     try {
         Ort::MemoryInfo memInfo =
             Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -105,6 +204,10 @@ static NSArray<NSDictionary *> *runInference(
                                     .GetTensorTypeAndShapeInfo().GetElementCount();
         if (numElem < kNumProposals * kProposalDim) return @[];
 
+        // Retrieve class names cached for this model (nil if metadata unavailable).
+        __block NSArray<NSString *> *classNames = nil;
+        dispatch_sync(gSessionQueue, ^{ classNames = gClassNamesCache[modelPath]; });
+
         const float scale = 1.0f / (float)inputSize;
         NSMutableArray *dets = [NSMutableArray array];
 
@@ -120,16 +223,37 @@ static NSArray<NSDictionary *> *runInference(
             float w  = x2 - x1, h = y2 - y1;
             if (w <= 0.f || h <= 0.f) continue;
 
+            int clsIdx = (int)p[5];
+            NSString *label = (classNames && clsIdx >= 0 && clsIdx < (int)classNames.count)
+                ? classNames[clsIdx]
+                : [NSString stringWithFormat:@"%d", clsIdx];
+
             [dets addObject:@{
-                @"label":       [NSString stringWithFormat:@"%d", (int)p[5]],
+                @"label":       label,
                 @"confidence":  @(conf),
-                @"boundingBox": @{@"x": @(x1), @"y": @(y1),
-                                  @"width": @(w), @"height": @(h)}
+                @"boundingBox": @{@"x": @(x1), @"y": @(y1), @"width": @(w), @"height": @(h)}
             }];
         }
-        NSLog(@"[ViroONNX] inference: %d detections (conf≥%.2f)",
-              (int)dets.count, confThreshold);
-        return [dets copy];
+
+        // Sort descending by confidence → required by greedy NMS.
+        [dets sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+            float ca = [a[@"confidence"] floatValue];
+            float cb = [b[@"confidence"] floatValue];
+            return ca > cb ? NSOrderedAscending : NSOrderedDescending;
+        }];
+
+        // NMS: suppress overlapping boxes (IoU > 0.45).
+        NSArray *afterNMS = applyNMS(dets, 0.45f);
+
+        // Cap at kMaxDetections (already sorted by confidence).
+        NSArray *result = afterNMS.count > kMaxDetections
+            ? [afterNMS subarrayWithRange:NSMakeRange(0, kMaxDetections)]
+            : afterNMS;
+
+        NSLog(@"[ViroONNX] inference: %d detections (conf≥%.2f, after NMS)",
+              (int)result.count, confThreshold);
+        return result;
+
     } catch (const Ort::Exception &e) {
         NSLog(@"[ViroONNX] inference error: %s", e.what());
         return @[];
@@ -147,7 +271,6 @@ static NSArray<NSDictionary *> *runInference(
     dispatch_once(&once, ^{
         // Do NOT call ensureEnv() here — +load fires before ORT's xcframework
         // C++ static initializers run, so Ort::Global<void>::api_ is still NULL.
-        // ORT is initialized lazily on the first inference call via sessionForModelPath().
         Class cls = NSClassFromString(@"VRTObjectDetectorView");
         if (!cls) {
             NSLog(@"[ViroONNX] VRTObjectDetectorView not found — ViroReact linked?");
@@ -165,6 +288,21 @@ static NSArray<NSDictionary *> *runInference(
         void (*fn)(id, SEL, id) = (void (*)(id, SEL, id))objc_msgSend;
         fn(cls, sel, block);
         NSLog(@"[ViroONNX] inference provider registered.");
+
+        // VRTObjectDetectorView posts this when it stops.
+        // Clearing the map releases the shared_ptrs. If runInference is still
+        // holding a local copy, the session stays alive until that copy drops —
+        // no use-after-free possible.
+        [[NSNotificationCenter defaultCenter]
+            addObserverForName:@"VRODetectorSessionReleased"
+                        object:nil
+                         queue:nil
+                    usingBlock:^(NSNotification *) {
+            dispatch_sync(gSessionQueue, ^{
+                gSessionMap.clear(); // shared_ptrs released; actual delete deferred
+            });
+            NSLog(@"[ViroONNX] ORT sessions released — memory returned to OS.");
+        }];
     });
 }
 
@@ -172,10 +310,12 @@ static NSArray<NSDictionary *> *runInference(
     return [NSString stringWithUTF8String:OrtGetApiBase()->GetVersionString()];
 }
 
-// +load fires when the dynamic framework is loaded by iOS at app launch —
-// before main(), before any React Native initialization.
+// +load fires when the dynamic framework is embedded and loaded by iOS, before main().
+// +install only registers the inference block — it does NOT touch ORT (no ensureEnv()).
+// ORT is initialized lazily in sessionForModelPath on the first actual inference call,
+// by which time ORT's own C++ static initializers have already run.
 + (void)load {
-    NSLog(@"[ViroONNX] +load — registering ORT provider.");
+    NSLog(@"[ViroONNX] +load — registering inference provider (ORT init deferred).");
     [self install];
 }
 
