@@ -5,7 +5,7 @@ ONNX Runtime inference provider for [`ViroObjectDetector`](../viro/docs/ViroObje
 ## How it works
 
 - **iOS:** a vendored, dynamically-linked `onnxruntime.xcframework`. The `ViroONNX` Objective-C++ class registers an inference block into `VRTObjectDetectorView` automatically via `+load` when the framework is loaded — no manual call needed.
-- **Android:** the `onnxruntime-android` AAR. `ViroONNXModule` registers the provider; registration is wired through React Native module init.
+- **Android:** the `onnxruntime-android` AAR. `ViroONNXModule` registers the provider through React Native module init, and creates the ORT session with the **NNAPI execution provider** (`USE_FP16`) so inference can run on the device GPU/NPU/DSP, falling back to CPU if NNAPI is unavailable or can't compile the graph.
 
 Both sides: run the model, apply confidence threshold + greedy NMS (IoU 0.45), sort by confidence, decode class indices to names from the model's `names` metadata, and return up to 50 detections (the view trims further to its `maxDetections` prop).
 
@@ -35,6 +35,24 @@ The config plugin:
 Then rebuild the native app (`npx expo run:ios` / `run:android`). On iOS, confirm in the logs that no `[ViroONNX] … not found` error appears — the provider registers silently on success.
 
 > `ViroONNX.install()` exists for backwards-compatibility but is a **no-op**; registration is automatic.
+
+> **Bundle your model too** — the detector loads `.onnx` by name from the **native** bundle, not Metro. See [Bundle a model](#bundle-a-model). A missing model surfaces as `model not found` at runtime.
+
+### Local development (consuming this package from source)
+
+If the app installs this package from a **packed tarball** (e.g. `"@reactvision/react-viro-onnx": "file:../path/react-viro-onnx-1.0.0.tgz"`), then `node_modules` holds a *snapshot* — editing the source here does **not** reach the app until you re-pack and reinstall:
+
+```bash
+# in this package (after editing native/JS or the config plugin):
+npm run build        # only if you changed TS (dist/ + plugin/build/)
+npm pack             # regenerates react-viro-onnx-1.0.0.tgz
+
+# in the app:
+rm -rf node_modules/@reactvision/react-viro-onnx
+npm install <path-to>/react-viro-onnx-1.0.0.tgz
+```
+
+Symptoms of a stale tarball: a config-plugin resolution error during `expo prebuild` (no `app.plugin.js` in `node_modules`), or native changes (e.g. NNAPI) never taking effect / no `ViroONNX` log lines. To skip re-packing during active dev, point the dep at the **folder** (`file:../path/react-viro-onnx`) instead of the tarball.
 
 ## Bundle a model
 
@@ -76,6 +94,21 @@ ViroONNX.install();        // no-op (registration is automatic)
 ViroONNX.getVersion();     // ONNX Runtime version string, e.g. "1.20.0"
 ```
 
+## Performance
+
+Inference is the per-frame bottleneck. `maxFPS` throttles how often it runs; the camera keeps rendering at native FPS regardless.
+
+- **Android** creates the session with the **NNAPI EP** (`USE_FP16`). Whether that actually offloads to GPU/NPU depends on the device's NNAPI drivers and how many YOLOE ops they support — unsupported ops (e.g. the end2end NMS) fall back to CPU. Check the logs:
+  - `ONNX Runtime inference provider registered.` — module loaded.
+  - `ORT session ready (NNAPI=true|false) …` — whether the NNAPI EP was applied.
+  - `infer run=<ms>ms` — wall-clock per inference. This is the number to watch.
+- If NNAPI doesn't help on a given device, the next levers (largest first): **INT8 quantization** of the model (export-time), then **lower input resolution** (640 → 480/320). Both trade a little accuracy for 2–4×.
+- The model is `yoloe-26n` (nano); larger variants are slower.
+
 ## Platform parity
 
-iOS is the reference implementation. Android has parity for standalone + AR-session detection (NMS, class names, `text`-mode filtering, `maxDetections`, center-square crop, and `screenBoundingBox` via the shared `ViroViewARCore` feed). Remaining gap: `worldPosition` (3D hit-test) is not yet emitted on Android, and `screenBoundingBox` orientation may need on-device calibration. See the platform table in the [component docs](../viro/docs/ViroObjectDetector.md#platform-support).
+iOS is the reference implementation. Android has parity for standalone + AR-session detection: NMS, class names, `text`-mode filtering, `maxDetections`, center-square crop, and an **aligned `screenBoundingBox`** in dp (the renderer feeds the detector the full uncropped frame + the viewport crop rectangle, the Android equivalent of iOS's `displayTransform`). Remaining gaps:
+- `worldPosition` (3D hit-test) is not yet emitted on Android.
+- Android AR sees the central ~55–60% of the vertical FOV (center-square crop of a portrait frame) vs iOS cropping a landscape sensor frame.
+
+See the platform table in the [component docs](../viro/docs/ViroObjectDetector.md#platform-support).
