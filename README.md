@@ -75,11 +75,19 @@ Edit the `CLASSES` list in the script to your target classes, re-run, then bundl
 
 The export keeps the same output format as the prompt-free model (`output0 [1,300,38]`, end2end NMS, segment task) and writes your class list into the `names` metadata, so **no native changes are needed** — the provider reads the new names automatically.
 
+Because the head is reparametrized to your classes, the model emits only those classes. You usually just run it in `prompt-free` mode:
+
+```tsx
+<ViroObjectDetector model="yoloe-26n-text" mode="prompt-free" />
+```
+
+`mode="text"` is **not** what bakes in your classes — that happens here, at export time. `text` mode is only a runtime label post-filter; add it (with `categories`) on top of the exported model when you want to narrow the output to a subset of the baked classes:
+
 ```tsx
 <ViroObjectDetector
   model="yoloe-26n-text"
   mode="text"
-  categories={["cup", "laptop", "keyboard", "mouse", "monitor", "book", "bottle"]}
+  categories={["cup", "laptop", "keyboard"]}  // a subset of the exported CLASSES
 />
 ```
 
@@ -107,7 +115,7 @@ Inference is the per-frame bottleneck. `maxFPS` throttles how often it runs; the
 
 ## Platform parity
 
-iOS is the reference implementation. Android has parity for standalone + AR-session detection: NMS, class names, `text`-mode filtering, `maxDetections`, center-square crop, and an **aligned `screenBoundingBox`** in dp (the renderer feeds the detector the full uncropped frame + the viewport crop rectangle, the Android equivalent of iOS's `displayTransform`). Remaining gaps:
+iOS is the reference implementation. Android has parity for AR-session detection: NMS, class names, `text`-mode filtering, `maxDetections`, center-square crop, and an **aligned `screenBoundingBox`** in dp (the renderer feeds the detector the full uncropped frame + the viewport crop rectangle, the Android equivalent of iOS's `displayTransform`). Remaining gaps:
 - `worldPosition` (3D hit-test) is not yet emitted on Android.
 - Android AR sees the central ~55–60% of the vertical FOV (center-square crop of a portrait frame) vs iOS cropping a landscape sensor frame.
 
