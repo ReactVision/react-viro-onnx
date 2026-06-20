@@ -25,7 +25,11 @@
 static const int kModelInputSize = 640;
 static const int kNumProposals   = 300;
 static const int kProposalDim    = 38;
-static const int kMaxDetections  = 5;
+// Internal ceiling on detections returned to the host. The host
+// (VRTObjectDetectorView) trims to its `maxDetections` prop, so this only needs to
+// be comfortably above any expected prop value. Results are confidence-sorted, so
+// the host keeps the top-N.
+static const int kMaxDetections  = 50;
 
 // ---------------------------------------------------------------------------
 // Block type — must match VRTInferenceBlock in VRTObjectDetectorView.h exactly.
@@ -101,7 +105,6 @@ static void loadClassNamesIfNeeded(NSString *modelPath,
             NSArray<NSString *> *names = parseClassNames(ptr.get());
             if (names) {
                 gClassNamesCache[modelPath] = names;
-                NSLog(@"[ViroONNX] %zu class names loaded from model metadata.", (size_t)names.count);
             }
         }
     } catch (...) {
@@ -158,7 +161,6 @@ static std::shared_ptr<Ort::Session> sessionForModelPath(NSString *modelPath) {
             gSessionMap[modelPath.UTF8String] = s;
             session = s;
             loadClassNamesIfNeeded(modelPath, s);  // reads metadata once per model
-            NSLog(@"[ViroONNX] model loaded: %@", modelPath);
         } catch (const Ort::Exception &e) {
             NSLog(@"[ViroONNX] failed to load model '%@': %s", modelPath, e.what());
         }
@@ -250,8 +252,6 @@ static NSArray<NSDictionary *> *runInference(
             ? [afterNMS subarrayWithRange:NSMakeRange(0, kMaxDetections)]
             : afterNMS;
 
-        NSLog(@"[ViroONNX] inference: %d detections (conf≥%.2f, after NMS)",
-              (int)result.count, confThreshold);
         return result;
 
     } catch (const Ort::Exception &e) {
@@ -287,7 +287,6 @@ static NSArray<NSDictionary *> *runInference(
             };
         void (*fn)(id, SEL, id) = (void (*)(id, SEL, id))objc_msgSend;
         fn(cls, sel, block);
-        NSLog(@"[ViroONNX] inference provider registered.");
 
         // VRTObjectDetectorView posts this when it stops.
         // Clearing the map releases the shared_ptrs. If runInference is still
@@ -301,7 +300,6 @@ static NSArray<NSDictionary *> *runInference(
             dispatch_sync(gSessionQueue, ^{
                 gSessionMap.clear(); // shared_ptrs released; actual delete deferred
             });
-            NSLog(@"[ViroONNX] ORT sessions released — memory returned to OS.");
         }];
     });
 }
@@ -315,7 +313,6 @@ static NSArray<NSDictionary *> *runInference(
 // ORT is initialized lazily in sessionForModelPath on the first actual inference call,
 // by which time ORT's own C++ static initializers have already run.
 + (void)load {
-    NSLog(@"[ViroONNX] +load — registering inference provider (ORT init deferred).");
     [self install];
 }
 
