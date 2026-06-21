@@ -16,7 +16,9 @@ android {
 }
 
 dependencies {
-    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'
+    // 1.20.0's prebuilt libonnxruntime4j_jni.so is not 16 KB-page aligned (fails Android 15+ /
+    // Google Play). ONNX Runtime ships 16 KB-aligned Android libs from 1.21.0 onward.
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.22.0'
 
     compileOnly 'com.facebook.react:react-android:+'
 

@@ -45,6 +45,8 @@ public class ViroONNXModule extends ReactContextBaseJavaModule {
     // the host view trims further to its maxDetections prop.
     private static final float NMS_IOU   = 0.45f;
     private static final int MAX_RESULTS = 50;
+    // Per-inference timing log. Keep false in shipping builds (fires every frame).
+    private static final boolean DEBUG = false;
 
     private static boolean sInstalled = false;
 
@@ -201,26 +203,31 @@ public class ViroONNXModule extends ReactContextBaseJavaModule {
 
             long runT0 = System.nanoTime();
             OrtSession.Result ortResult = session.run(inputs);
-            long runMs = (System.nanoTime() - runT0) / 1_000_000L;
-            Log.i(TAG, "infer run=" + runMs + "ms");
-            float[][][] output0 = (float[][][]) ortResult.get("output0").get().getValue();
-            // output0[batch][det_idx][dim]
+            if (DEBUG) {
+                long runMs = (System.nanoTime() - runT0) / 1_000_000L;
+                Log.i(TAG, "infer run=" + runMs + "ms");
+            }
+
+            // Read the output as a flat FloatBuffer view (row-major [1,300,38]) instead of
+            // materializing nested float[1][300][38] Java arrays on every inference.
+            OnnxTensor outTensor = (OnnxTensor) ortResult.get("output0").get();
+            FloatBuffer out = outTensor.getFloatBuffer();
 
             float scale = 1.0f / inputSize;
-            float[][] dets = output0[0];
 
             for (int i = 0; i < NUM_DETS; i++) {
-                float conf = dets[i][4];
+                int base = i * DET_DIM;
+                float conf = out.get(base + 4);
                 if (conf < confThreshold) continue;
 
-                float x1 = Math.max(0f, Math.min(1f, dets[i][0] * scale));
-                float y1 = Math.max(0f, Math.min(1f, dets[i][1] * scale));
-                float x2 = Math.max(0f, Math.min(1f, dets[i][2] * scale));
-                float y2 = Math.max(0f, Math.min(1f, dets[i][3] * scale));
+                float x1 = Math.max(0f, Math.min(1f, out.get(base)     * scale));
+                float y1 = Math.max(0f, Math.min(1f, out.get(base + 1) * scale));
+                float x2 = Math.max(0f, Math.min(1f, out.get(base + 2) * scale));
+                float y2 = Math.max(0f, Math.min(1f, out.get(base + 3) * scale));
                 float w = x2 - x1, h = y2 - y1;
                 if (w <= 0 || h <= 0) continue;
 
-                int clsIdx = (int) dets[i][5];
+                int clsIdx = (int) out.get(base + 5);
                 String label = (classNames != null && clsIdx >= 0 && clsIdx < classNames.length)
                     ? classNames[clsIdx]
                     : String.valueOf(clsIdx);

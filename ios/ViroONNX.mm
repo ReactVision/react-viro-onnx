@@ -146,13 +146,18 @@ static NSArray<NSDictionary *> *applyNMS(NSMutableArray<NSDictionary *> *dets,
 }
 
 // Returns a shared_ptr — caller holds a strong reference for the duration of inference.
-static std::shared_ptr<Ort::Session> sessionForModelPath(NSString *modelPath) {
+// Also returns the model's cached class names via outNames, fetched inside the same
+// serial-queue hop so steady-state inference needs no extra dispatch_sync per frame.
+static std::shared_ptr<Ort::Session> sessionForModelPath(NSString *modelPath,
+                                                         NSArray<NSString *> **outNames) {
     ensureEnv();
     __block std::shared_ptr<Ort::Session> session;
+    __block NSArray<NSString *> *names = nil;
     dispatch_sync(gSessionQueue, ^{
         auto it = gSessionMap.find(modelPath.UTF8String);
         if (it != gSessionMap.end()) {
             session = it->second; // copy: bumps ref count
+            names = gClassNamesCache[modelPath];
             return;
         }
         try {
@@ -161,10 +166,12 @@ static std::shared_ptr<Ort::Session> sessionForModelPath(NSString *modelPath) {
             gSessionMap[modelPath.UTF8String] = s;
             session = s;
             loadClassNamesIfNeeded(modelPath, s);  // reads metadata once per model
+            names = gClassNamesCache[modelPath];
         } catch (const Ort::Exception &e) {
             NSLog(@"[ViroONNX] failed to load model '%@': %s", modelPath, e.what());
         }
     });
+    if (outNames) *outNames = names;
     return session;
 }
 
@@ -179,8 +186,10 @@ static NSArray<NSDictionary *> *runInference(
     float confThreshold)
 {
     // Local shared_ptr: session stays alive for the entire function even if
-    // gSessionMap is cleared concurrently (e.g. detector unmounting).
-    std::shared_ptr<Ort::Session> session = sessionForModelPath(modelPath);
+    // gSessionMap is cleared concurrently (e.g. detector unmounting). Class names come
+    // back from the same queue hop, so the hot path makes no extra dispatch_sync per frame.
+    NSArray<NSString *> *classNames = nil;
+    std::shared_ptr<Ort::Session> session = sessionForModelPath(modelPath, &classNames);
     if (!session) return @[];
 
     try {
@@ -206,10 +215,7 @@ static NSArray<NSDictionary *> *runInference(
                                     .GetTensorTypeAndShapeInfo().GetElementCount();
         if (numElem < kNumProposals * kProposalDim) return @[];
 
-        // Retrieve class names cached for this model (nil if metadata unavailable).
-        __block NSArray<NSString *> *classNames = nil;
-        dispatch_sync(gSessionQueue, ^{ classNames = gClassNamesCache[modelPath]; });
-
+        // classNames was fetched alongside the session above (nil if metadata unavailable).
         const float scale = 1.0f / (float)inputSize;
         NSMutableArray *dets = [NSMutableArray array];
 
