@@ -1,6 +1,6 @@
 # @reactvision/react-viro-onnx
 
-ONNX Runtime inference provider for [`ViroObjectDetector`](../viro/docs/ViroObjectDetector.md). This package supplies the on-device YOLOE inference (ONNX Runtime, NMS, class-name decoding) that powers object detection in ViroReact. `ViroObjectDetector` itself only handles the camera and plumbing — without this provider, detection returns empty.
+ONNX Runtime inference provider for [`ViroObjectDetector`](https://github.com/ReactVision/viro/blob/main/docs/ViroObjectDetector.md). This package supplies the on-device YOLOE inference (ONNX Runtime, NMS, class-name decoding) that powers object detection in ViroReact. `ViroObjectDetector` itself only handles the camera and plumbing — without this provider, detection returns empty.
 
 ## How it works
 
@@ -29,12 +29,10 @@ Add **both** plugins to your `app.json` (this one *after* `@reactvision/react-vi
 ```
 
 The config plugin:
-- **iOS:** inserts `pod 'ViroReactONNX'` into the Podfile (after the `ViroKit` pod). On first `pod install` it downloads `onnxruntime.xcframework` (~60 MB, cached, not committed).
-- **Android:** adds `implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'` to the app `build.gradle`.
+- **iOS:** inserts `pod 'ViroReactONNX'` into the app target's Podfile (after the React Native pods, so it doesn't disturb `use_react_native!`). On first `pod install` it downloads `onnxruntime.xcframework` (~60 MB, cached, not committed).
+- **Android:** adds `implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.22.0'` to the app `build.gradle`.
 
 Then rebuild the native app (`npx expo run:ios` / `run:android`). On iOS, confirm in the logs that no `[ViroONNX] … not found` error appears — the provider registers silently on success.
-
-> `ViroONNX.install()` exists for backwards-compatibility but is a **no-op**; registration is automatic.
 
 > **Bundle your model too** — the detector loads `.onnx` by name from the **native** bundle, not Metro. See [Bundle a model](#bundle-a-model). A missing model surfaces as `model not found` at runtime.
 
@@ -56,7 +54,7 @@ Symptoms of a stale tarball: a config-plugin resolution error during `expo prebu
 
 ## Bundle a model
 
-Ship an `.onnx` next to your app and reference it by name via the `model` prop. See [model bundling](../viro/docs/ViroObjectDetector.md#model-bundling). The prompt-free `yoloe-26n` model carries 4,585 classes; its label names are read from the ONNX `names` metadata at load time.
+Ship an `.onnx` next to your app and reference it by name via the `model` prop. See [model bundling](https://github.com/ReactVision/viro/blob/main/docs/ViroObjectDetector.md#model-bundling). The prompt-free `yoloe-26n` model carries 4,585 classes; its label names are read from the ONNX `names` metadata at load time.
 
 ## Exporting a text-prompt model
 
@@ -95,11 +93,12 @@ Because the head is reparametrized to your classes, the model emits only those c
 
 ## API
 
+The provider registers itself automatically when the native pod/AAR is linked — there's nothing to call. The only exposed helper is a version probe:
+
 ```ts
 import { ViroONNX } from "@reactvision/react-viro-onnx";
 
-ViroONNX.install();        // no-op (registration is automatic)
-ViroONNX.getVersion();     // ONNX Runtime version string, e.g. "1.20.0"
+ViroONNX.getVersion();  // ONNX Runtime version linked into the app (iOS: 1.20.0, Android: 1.22.0)
 ```
 
 ## Performance
@@ -119,4 +118,4 @@ iOS is the reference implementation. Android has parity for AR-session detection
 - `worldPosition` (3D hit-test) is not yet emitted on Android.
 - Android AR sees the central ~55–60% of the vertical FOV (center-square crop of a portrait frame) vs iOS cropping a landscape sensor frame.
 
-See the platform table in the [component docs](../viro/docs/ViroObjectDetector.md#platform-support).
+See the platform table in the [component docs](https://github.com/ReactVision/viro/blob/main/docs/ViroObjectDetector.md#platform-support).
