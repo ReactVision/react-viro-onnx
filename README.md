@@ -1,6 +1,28 @@
-# @reactvision/react-viro-onnx
+<p align="center" style="background-colour: #CCCCCC;">
+  <a href="https://www.reactvision.xyz/">
+    <img src="https://avatars.githubusercontent.com/u/74572641?s=200&v=4" alt="ReactVision logo" width="120px" height="120px">
+  </a>
+</p>
 
-ONNX Runtime inference provider for [`ViroObjectDetector`](https://github.com/ReactVision/viro/blob/main/docs/ViroObjectDetector.md). This package supplies the on-device YOLOE inference (ONNX Runtime, NMS, class-name decoding) that powers object detection in ViroReact. `ViroObjectDetector` itself only handles the camera and plumbing — without this provider, detection returns empty.
+<p align="center">
+  <a href="https://www.npmjs.com/package/@reactvision/react-viro-onnx">
+    <img src="https://img.shields.io/npm/v/@reactvision/react-viro-onnx" alt="npm version">
+  </a>
+  <a href="https://www.npmjs.com/package/@reactvision/react-viro-onnx">
+    <img src="https://img.shields.io/npm/dm/@reactvision/react-viro-onnx?colour=purple" alt="downloads">
+  </a>
+  <a href="https://discord.gg/yqqEGUjK">
+    <img src="https://img.shields.io/discord/774471080713781259?label=Discord" alt="Discord">
+  </a>
+</p>
+
+# ViroReact ONNX, By ReactVision
+
+On-device YOLOE object-detection inference for [ViroReact](https://github.com/ReactVision/viro), powered by ONNX Runtime. This package is the inference engine behind [`ViroObjectDetector`](https://github.com/ReactVision/viro/blob/main/docs/ViroObjectDetector.md): it runs the model (inference, NMS, class-name decoding) fully on-device. `ViroObjectDetector` handles the camera and plumbing — without this provider, detection returns empty.
+
+MIT licensed and free forever.
+
+> **Requires [`@reactvision/react-viro`](https://www.npmjs.com/package/@reactvision/react-viro) ≥ 2.57.0** (the release that ships `ViroObjectDetector`). Works with both **React Native CLI** and **Expo** projects.
 
 ## How it works
 
@@ -9,10 +31,10 @@ ONNX Runtime inference provider for [`ViroObjectDetector`](https://github.com/Re
 
 Both sides: run the model, apply confidence threshold + greedy NMS (IoU 0.45), sort by confidence, decode class indices to names from the model's `names` metadata, and return up to 50 detections (the view trims further to its `maxDetections` prop).
 
-## Install
+## Installation
 
 ```bash
-npm install @reactvision/react-viro-onnx
+npm install @reactvision/react-viro @reactvision/react-viro-onnx
 ```
 
 Add **both** plugins to your `app.json` (this one *after* `@reactvision/react-viro`):
@@ -119,3 +141,27 @@ iOS is the reference implementation. Android has parity for AR-session detection
 - Android AR sees the central ~55–60% of the vertical FOV (center-square crop of a portrait frame) vs iOS cropping a landscape sensor frame.
 
 See the platform table in the [component docs](https://github.com/ReactVision/viro/blob/main/docs/ViroObjectDetector.md#platform-support).
+
+## Documentation
+
+- `ViroObjectDetector` component reference: <https://github.com/ReactVision/viro/blob/main/docs/ViroObjectDetector.md>
+- ViroReact docs: <https://viro-community.readme.io/docs/overview>
+
+## Community
+
+Discord is the best place to find the team and other developers building with ViroReact:
+
+<a href="https://discord.gg/A6TaFNqwVc">
+  <img src="https://discordapp.com/api/guilds/774471080713781259/widget.png?style=banner2" />
+</a>
+
+## Find Out More
+
+- Website: <https://reactvision.xyz>
+- ViroReact: <https://reactvision.xyz/viro-react>
+- ReactVision Studio: <https://studio.reactvision.xyz>
+- Blog: <https://updates.reactvision.xyz>
+
+---
+
+MIT licensed. © ReactVision, Inc.
