@@ -18,7 +18,7 @@
 
 # ViroReact ONNX, By ReactVision
 
-On-device YOLOE object-detection inference for [ViroReact](https://github.com/ReactVision/viro), powered by ONNX Runtime. This package is the inference engine behind [`ViroObjectDetector`](https://github.com/ReactVision/viro/blob/main/docs/ViroObjectDetector.md): it runs the model (inference, NMS, class-name decoding) fully on-device. `ViroObjectDetector` handles the camera and plumbing — without this provider, detection returns empty.
+On-device YOLOE object-detection inference for [ViroReact](https://github.com/ReactVision/viro), powered by ONNX Runtime. This package is the inference engine behind `ViroObjectDetector`: it runs the model (inference, NMS, class-name decoding) fully on-device. `ViroObjectDetector` handles the camera and plumbing — without this provider, detection returns empty.
 
 MIT licensed and free forever.
 
@@ -76,7 +76,7 @@ Symptoms of a stale tarball: a config-plugin resolution error during `expo prebu
 
 ## Bundle a model
 
-Ship an `.onnx` next to your app and reference it by name via the `model` prop. See [model bundling](https://github.com/ReactVision/viro/blob/main/docs/ViroObjectDetector.md#model-bundling). The prompt-free `yoloe-26n` model carries 4,585 classes; its label names are read from the ONNX `names` metadata at load time.
+Ship an `.onnx` next to your app and reference it by name via the `model` prop. The prompt-free `yoloe-26n` model carries 4,585 classes; its label names are read from the ONNX `names` metadata at load time.
 
 ## Exporting a text-prompt model
 
@@ -140,11 +140,9 @@ iOS is the reference implementation. Android has parity for AR-session detection
 - `worldPosition` (3D hit-test) is not yet emitted on Android.
 - Android AR sees the central ~55–60% of the vertical FOV (center-square crop of a portrait frame) vs iOS cropping a landscape sensor frame.
 
-See the platform table in the [component docs](https://github.com/ReactVision/viro/blob/main/docs/ViroObjectDetector.md#platform-support).
 
 ## Documentation
 
-- `ViroObjectDetector` component reference: <https://github.com/ReactVision/viro/blob/main/docs/ViroObjectDetector.md>
 - ViroReact docs: <https://viro-community.readme.io/docs/overview>
 
 ## Community
