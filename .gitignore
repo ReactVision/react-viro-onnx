@@ -2,3 +2,6 @@ node_modules/
 ios/dist/
 *.xcframework
 *.zip
+
+# npm pack output
+*.tgz
