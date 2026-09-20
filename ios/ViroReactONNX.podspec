@@ -13,27 +13,14 @@ Pod::Spec.new do |s|
 
   s.source_files     = '*.{h,m,mm}'
 
-  # Downloads onnxruntime.xcframework (dynamic) from the official onnxruntime pod archive.
-  # This avoids the static_framework = true constraint of onnxruntime-c CocoaPod.
-  # The xcframework is NOT committed to git; downloaded once on first pod install.
-  # prepare_command runs from the directory containing this podspec (ios/).
-  s.prepare_command = <<-CMD
-    set -e
-    ONNX_VERSION="1.20.0"
-    DEST="dist/Frameworks"
-    XCFWK="$DEST/onnxruntime.xcframework"
-    if [ ! -d "$XCFWK" ]; then
-      echo "react-viro-onnx: downloading onnxruntime.xcframework v${ONNX_VERSION}..."
-      mkdir -p "$DEST"
-      curl -L "https://download.onnxruntime.ai/pod-archive-onnxruntime-c-${ONNX_VERSION}.zip" \
-           -o /tmp/ort-ios.zip
-      unzip -q /tmp/ort-ios.zip "onnxruntime.xcframework/*" -d "$DEST"
-      rm /tmp/ort-ios.zip
-      echo "react-viro-onnx: onnxruntime.xcframework ready."
-    else
-      echo "react-viro-onnx: onnxruntime.xcframework already present, skipping."
-    fi
-  CMD
+  # onnxruntime.xcframework is not committed; `prepare_command` fetches it on pod install,
+  # through the script that is the single source of truth for where it comes from.
+  #
+  # It has to happen at *install* time, not build time. CocoaPods wires the framework's copy
+  # phase from what exists when the project is generated, so a framework that appears later
+  # fails the build in `rsync` with "No such file or directory" — a build-time script_phase
+  # cannot rescue it, which was tried and does not work.
+  s.prepare_command = 'bash ../scripts/download_onnxruntime.sh'
 
   # Vendored dynamic xcframework — no static/dynamic conflict with use_frameworks! :linkage => :dynamic
   s.vendored_frameworks = 'dist/Frameworks/onnxruntime.xcframework'
