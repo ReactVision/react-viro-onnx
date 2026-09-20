@@ -51,7 +51,7 @@ Add **both** plugins to your `app.json` (this one *after* `@reactvision/react-vi
 ```
 
 The config plugin:
-- **iOS:** inserts `pod 'ViroReactONNX'` into the app target's Podfile (after the React Native pods, so it doesn't disturb `use_react_native!`). On first `pod install` it downloads `onnxruntime.xcframework` (~60 MB, cached, not committed).
+- **iOS:** inserts `pod 'ViroReactONNX'` into the app target's Podfile (after the React Native pods, so it doesn't disturb `use_react_native!`). On first `pod install` it downloads `onnxruntime.xcframework` (a 43 MB archive, 177 MB unpacked — cached, not committed).
 - **Android:** adds `implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.22.0'` to the app `build.gradle`.
 
 Then rebuild the native app (`npx expo run:ios` / `run:android`). On iOS, confirm in the logs that no `[ViroONNX] … not found` error appears — the provider registers silently on success.

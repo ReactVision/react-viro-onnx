@@ -1,6 +1,6 @@
 {
   "name": "@reactvision/react-viro-onnx",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "ONNX Runtime inference provider for @reactvision/react-viro ViroObjectDetector",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -30,6 +30,7 @@
     "scripts/download_onnxruntime.sh",
     "app.plugin.js",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "expo": {
