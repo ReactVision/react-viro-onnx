@@ -11,7 +11,7 @@
   <a href="https://www.npmjs.com/package/@reactvision/react-viro-onnx">
     <img src="https://img.shields.io/npm/dm/@reactvision/react-viro-onnx?colour=purple" alt="downloads">
   </a>
-  <a href="https://discord.gg/yqqEGUjK">
+  <a href="https://discord.gg/A6TaFNqwVc">
     <img src="https://img.shields.io/discord/774471080713781259?label=Discord" alt="Discord">
   </a>
 </p>
@@ -52,7 +52,7 @@ Add **both** plugins to your `app.json` (this one *after* `@reactvision/react-vi
 
 The config plugin:
 - **iOS:** inserts `pod 'ViroReactONNX'` into the app target's Podfile (after the React Native pods, so it doesn't disturb `use_react_native!`). On first `pod install` it downloads `onnxruntime.xcframework` (a 43 MB archive, 177 MB unpacked — cached, not committed).
-- **Android:** adds `implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.22.0'` to the app `build.gradle`.
+- **Android:** adds `implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'` to the app `build.gradle`. The library module itself depends on `1.22.0`, which is what Gradle resolves to at build time.
 
 Then rebuild the native app (`npx expo run:ios` / `run:android`). On iOS, confirm in the logs that no `[ViroONNX] … not found` error appears — the provider registers silently on success.
 
@@ -60,16 +60,16 @@ Then rebuild the native app (`npx expo run:ios` / `run:android`). On iOS, confir
 
 ### Local development (consuming this package from source)
 
-If the app installs this package from a **packed tarball** (e.g. `"@reactvision/react-viro-onnx": "file:../path/react-viro-onnx-1.0.0.tgz"`), then `node_modules` holds a *snapshot* — editing the source here does **not** reach the app until you re-pack and reinstall:
+If the app installs this package from a **packed tarball** (e.g. `"@reactvision/react-viro-onnx": "file:../path/reactvision-react-viro-onnx-1.0.1.tgz"`), then `node_modules` holds a *snapshot* — editing the source here does **not** reach the app until you re-pack and reinstall:
 
 ```bash
 # in this package (after editing native/JS or the config plugin):
 npm run build        # only if you changed TS (dist/ + plugin/build/)
-npm pack             # regenerates react-viro-onnx-1.0.0.tgz
+npm pack             # regenerates reactvision-react-viro-onnx-1.0.1.tgz
 
 # in the app:
 rm -rf node_modules/@reactvision/react-viro-onnx
-npm install <path-to>/react-viro-onnx-1.0.0.tgz
+npm install <path-to>/reactvision-react-viro-onnx-1.0.1.tgz
 ```
 
 Symptoms of a stale tarball: a config-plugin resolution error during `expo prebuild` (no `app.plugin.js` in `node_modules`), or native changes (e.g. NNAPI) never taking effect / no `ViroONNX` log lines. To skip re-packing during active dev, point the dep at the **folder** (`file:../path/react-viro-onnx`) instead of the tarball.
@@ -120,7 +120,7 @@ The provider registers itself automatically when the native pod/AAR is linked �
 ```ts
 import { ViroONNX } from "@reactvision/react-viro-onnx";
 
-ViroONNX.getVersion();  // ONNX Runtime version linked into the app (iOS: 1.20.0, Android: 1.22.0)
+ViroONNX.getVersion();  // Android: linked ORT version (e.g. "1.22.0"); iOS: currently always "unavailable" (no native module on iOS)
 ```
 
 ## Performance
