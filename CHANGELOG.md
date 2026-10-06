@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2
+
+### Fixed
+
+- **Android: the Expo plugin injects `onnxruntime-android` 1.22.0, the version the library declares.** It wrote 1.20.0, whose prebuilt `libonnxruntime4j_jni.so` is not 16 KB-page aligned, which Android 15+ and Google Play reject. Gradle usually resolved the conflict up to 1.22.0, but an app with `resolutionStrategy.force`, a BOM or a lock file got 1.20.0 and had its upload refused. The version is now one exported constant, `ONNX_RUNTIME_VERSION`.
+- **iOS: `getVersion()` returns the ONNX Runtime version.** No React Native module was registered on iOS, so `NativeModules.ViroONNX` was undefined and the call returned `'unavailable'` on every device. A small bridge module, `ViroONNXModule`, forwards to the provider's existing `+ortVersion`; the pod now depends on `React-Core`.
+
 ## 1.0.1
 
 ### Fixed
