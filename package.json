@@ -23,6 +23,7 @@
     "plugin/build",
     "ios/ViroONNX.h",
     "ios/ViroONNX.mm",
+    "ios/ViroONNXModule.mm",
     "ios/ViroReactONNX.podspec",
     "android/build.gradle",
     "android/src",
