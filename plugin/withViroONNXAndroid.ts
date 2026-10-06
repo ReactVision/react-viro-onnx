@@ -1,7 +1,12 @@
 import { ConfigPlugin, withAppBuildGradle } from "@expo/config-plugins";
 
-const ONNX_DEPENDENCY =
-  "    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'";
+// Keep in step with android/build.gradle. 1.20.0's prebuilt libonnxruntime4j_jni.so is not
+// 16 KB-page aligned, which Android 15+ and Google Play reject; 1.21.0 onward ships aligned
+// Android libs. Injecting an older version here than the library declares is how an app with a
+// pinned resolution (resolutionStrategy.force, a BOM, a lock file) ends up with the rejected one.
+export const ONNX_RUNTIME_VERSION = "1.22.0";
+
+const ONNX_DEPENDENCY = `    implementation 'com.microsoft.onnxruntime:onnxruntime-android:${ONNX_RUNTIME_VERSION}'`;
 
 export const withViroONNXAndroid: ConfigPlugin = (config) => {
   return withAppBuildGradle(config, (newConfig) => {
