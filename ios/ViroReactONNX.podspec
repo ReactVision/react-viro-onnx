@@ -13,6 +13,10 @@ Pod::Spec.new do |s|
 
   s.source_files     = '*.{h,m,mm}'
 
+  # ViroONNXModule.mm is a React Native module, so it needs the bridge headers. ViroONNX.mm
+  # itself still links nothing beyond ONNX Runtime: it resolves the host view at runtime.
+  s.dependency 'React-Core'
+
   # onnxruntime.xcframework is not committed; `prepare_command` fetches it on pod install,
   # through the script that is the single source of truth for where it comes from.
   #
