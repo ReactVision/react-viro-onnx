@@ -29,7 +29,7 @@ MIT licensed and free forever.
 - **iOS:** a vendored, dynamically-linked `onnxruntime.xcframework`. The `ViroONNX` Objective-C++ class registers an inference block into `VRTObjectDetectorView` automatically via `+load` when the framework is loaded — no manual call needed.
 - **Android:** the `onnxruntime-android` AAR. `ViroONNXModule` registers the provider through React Native module init, and creates the ORT session with the **NNAPI execution provider** (`USE_FP16`) so inference can run on the device GPU/NPU/DSP, falling back to CPU if NNAPI is unavailable or can't compile the graph.
 
-Both sides: run the model, apply confidence threshold + greedy NMS (IoU 0.45), sort by confidence, decode class indices to names from the model's `names` metadata, and return up to 50 detections (the view trims further to its `maxDetections` prop).
+Both sides call the same detection core ([`core/`](core/README.md), written in [Eskiu](https://github.com/eskiu-lang/eskiu)): it runs the model, applies the confidence threshold + greedy NMS (IoU 0.45), sorts by confidence, decodes class indices to names from the model's `names` metadata, and returns up to 50 detections (the view trims further to its `maxDetections` prop). It ships prebuilt as `ViroONNXCore.xcframework` (iOS) and `libviro_onnx.so` (Android `arm64-v8a`, `x86_64`).
 
 ## Installation
 
@@ -71,6 +71,8 @@ npm pack             # regenerates reactvision-react-viro-onnx-1.0.1.tgz
 rm -rf node_modules/@reactvision/react-viro-onnx
 npm install <path-to>/reactvision-react-viro-onnx-1.0.1.tgz
 ```
+
+The detection core is prebuilt into the package: after editing `core/`, run `npm run build:core` (needs `eskiuc`, Xcode and the Android NDK; see [core/README.md](core/README.md)) before `npm pack`.
 
 Symptoms of a stale tarball: a config-plugin resolution error during `expo prebuild` (no `app.plugin.js` in `node_modules`), or native changes (e.g. NNAPI) never taking effect / no `ViroONNX` log lines. To skip re-packing during active dev, point the dep at the **folder** (`file:../path/react-viro-onnx`) instead of the tarball.
 
