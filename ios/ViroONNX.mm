@@ -42,7 +42,10 @@ static NSArray<NSDictionary *> *runInference(
     float confThreshold)
 {
     const char *path = modelPath.UTF8String;
-    if (!viro_onnx_load_file(path, path, VIRO_ONNX_CPU)) {
+    // CoreML only as an ML Program, which needs iOS 15; below it the CPU.
+    int accel = VIRO_ONNX_CPU;
+    if (@available(iOS 15.0, *)) accel = VIRO_ONNX_COREML;
+    if (!viro_onnx_load_file(path, path, accel)) {
         NSLog(@"[ViroONNX] failed to load model '%@': %s", modelPath, viro_onnx_last_error());
         return @[];
     }

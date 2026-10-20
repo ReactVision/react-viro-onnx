@@ -133,6 +133,7 @@ Inference is the per-frame bottleneck. `maxFPS` throttles how often it runs; the
   - `ONNX Runtime inference provider registered.` — module loaded.
   - `ORT session ready (NNAPI=true|false) …` — whether the NNAPI EP was applied.
   - `infer run=<ms>ms` — wall-clock per inference. This is the number to watch.
+- **iOS** creates the session with the **CoreML EP** as an ML Program, on all compute units (CPU, GPU and the Neural Engine), and falls back to the CPU when CoreML cannot take the model; below iOS 15, where ML Programs do not exist, it runs on the CPU. The older NeuralNetwork format is not used: on the GPU and the Neural Engine it computes in float16 and YOLOE's outputs come out wrong. `viro_onnx_provider` (C API) reports `CoreML` or `CPU`.
 - If NNAPI doesn't help on a given device, the next levers (largest first): **INT8 quantization** of the model (export-time), then **lower input resolution** (640 → 480/320). Both trade a little accuracy for 2–4×.
 - The model is `yoloe-26n` (nano); larger variants are slower.
 

@@ -5,6 +5,7 @@
 ### Changed
 
 - **One detection core for iOS and Android.** Session caching, the decoding of the 300 YOLOE proposals, NMS and the class names now live in `core/`, written in Eskiu over ONNX Runtime's C API, and both bridges call it: `ViroONNX.mm` through the C API (`ViroONNXCore.xcframework`), the Android module through JNI (`libviro_onnx.so`). The Objective-C++ and Java copies of that logic are gone. Output is unchanged: the core matches a Python reference of the old post-processing byte for byte, and on the iOS simulator and an Android emulator within the rounding of their ONNX Runtime versions. `npm run build:core` builds the libraries before `npm pack`.
+- **iOS runs the model on CoreML** (GPU and Neural Engine) as an ML Program, falling back to the CPU; before, iOS ran on the CPU only. On the simulator and on macOS the detections match the CPU's.
 - The 32-bit Android ABIs (`armeabi-v7a`, `x86`) have no core library yet; the provider does not register there.
 
 ## 1.0.2
