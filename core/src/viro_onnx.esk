@@ -197,6 +197,16 @@ int viro_onnx_is_loaded(string key) {
     return m != null && m.session != null ? 1 : 0;
 }
 
+// The execution provider of the session under key ("CPU", "NNAPI", ...), "" when none.
+string viro_onnx_provider(string key) {
+    if (key == null) return "";
+    _vo_lock();
+    defer _vo_unlock();
+    *_VoModel m = _vo_find(key);
+    if (m == null || m.session == null) return "";
+    return onnx_provider_name(m.session.s.provider);
+}
+
 // Call with the lock held.
 void _vo_drop(*_VoSession s) {
     s.refs = s.refs - 1;

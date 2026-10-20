@@ -143,6 +143,21 @@ int Java_com_reactvision_viroonnx_ViroONNXCore_nativeDetect(*void env, *void cls
     return n;
 }
 
+// ViroONNXCore.nativeProvider(String key).
+*void Java_com_reactvision_viroonnx_ViroONNXCore_nativeProvider(*void env, *void cls, *void key) {
+    string p = "";
+    if (key != null) {
+        string k = _jni_chars(env, key);
+        if (k != null) {
+            p = viro_onnx_provider(k);
+            _jni_release_chars(env, key, k);
+        }
+    }
+    _JniRaw r = _jni(env, _JNI_NewStringUTF);
+    fn(string)->*void r_f = ((*_JniNewStr)&r).f;
+    return r_f(p);
+}
+
 // ViroONNXCore.nativeReleaseAll().
 void Java_com_reactvision_viroonnx_ViroONNXCore_nativeReleaseAll(*void env, *void cls) {
     viro_onnx_release_all();

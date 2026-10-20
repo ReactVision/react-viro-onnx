@@ -36,6 +36,10 @@ int viro_onnx_load_file(const char *key, const char *path, int accel);
 int viro_onnx_load_bytes(const char *key, const uint8_t *data, uint64_t len, int accel);
 int viro_onnx_is_loaded(const char *key);
 
+// The execution provider the session under `key` runs on ("CPU", "NNAPI", "CoreML"),
+// "" when no model is loaded under it.
+const char *viro_onnx_provider(const char *key);
+
 // Runs the model loaded under `key` on a 1x3xNxN NCHW float image and writes up to
 // max_out detections, sorted by confidence, after a 0.45 IoU NMS (at most 50).
 // Returns the count, or -1 when the model is not loaded or inference fails.
@@ -48,7 +52,7 @@ void viro_onnx_release_all(void);
 // The ONNX Runtime version string, e.g. "1.22.0".
 const char *viro_onnx_ort_version(void);
 
-// The last error of the calling thread's most recent failed call.
+// The error of the most recent failed call.
 const char *viro_onnx_last_error(void);
 
 #ifdef __cplusplus

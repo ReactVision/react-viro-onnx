@@ -43,6 +43,7 @@ static Arr slurp(const char *path) {
 }
 
 int main(int argc, char **argv) {
+    setvbuf(stdout, NULL, _IONBF, 0);
     if (argc < 3) return 2;
     table[23] = del_ref;
     table[167] = new_str;
@@ -59,7 +60,7 @@ int main(int argc, char **argv) {
     if (!model.data || in.len != 3 * 640 * 640 * 4) return 1;
     in.len /= 4;
     float conf = argc > 3 ? (float)atof(argv[3]) : 0.25f;
-    if (!Java_com_reactvision_viroonnx_ViroONNXCore_nativeLoad(env, NULL, "m", &model, 0)) return 1;
+    if (!Java_com_reactvision_viroonnx_ViroONNXCore_nativeLoad(env, NULL, "m", &model, getenv("NNAPI") != NULL)) return 1;
     if (!Java_com_reactvision_viroonnx_ViroONNXCore_nativeIsLoaded(env, NULL, "m")) return 1;
     float boxes[50 * 6];
     void *labels[50];
