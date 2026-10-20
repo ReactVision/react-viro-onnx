@@ -3,7 +3,9 @@
 # simulator and a connected arm64 Android device or emulator, and compares the output
 # with tests/reference.py (tests/compare.py: within rounding of other ORT versions). Needs Xcode, the Android NDK and adb.
 #
-#   MODEL=path/to/yoloe-26n.onnx IMAGE=photo.jpg [SIM=udid] tests/mobile.sh [ios] [android]
+#   MODEL=path/to/yoloe-26n.onnx IMAGE=photo.jpg [SIM=udid] [ACCEL=2] tests/mobile.sh [ios] [android]
+#
+# ACCEL picks the iOS provider (viro_onnx.h: 0 CPU, 2 CoreML).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(cd .. && pwd)"
@@ -11,6 +13,7 @@ MODEL="${MODEL:?set MODEL}"
 IMAGE="${IMAGE:?set IMAGE}"
 SIM="${SIM:-booted}"
 CONF="${CONF:-0.05}"
+ACCEL="${ACCEL:-0}"
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
 python3 tests/reference.py "$MODEL" "$IMAGE" "$out/in.bin" "$CONF" > "$out/ref"
@@ -24,7 +27,7 @@ for t in "${targets[@]}"; do
         xcrun -sdk iphonesimulator clang -target arm64-apple-ios14.0-simulator -Iinclude tests/capi.c \
             "$ROOT/ios/dist/ViroONNXCore.xcframework/ios-arm64_x86_64-simulator/libviro_onnx.a" \
             -F"$ort" -framework onnxruntime -lc++ -framework Foundation -framework CoreML -o "$out/capi_ios"
-        xcrun simctl spawn "$SIM" "$out/capi_ios" "$MODEL" "$out/in.bin" "$CONF" > "$out/ios" ;;
+        xcrun simctl spawn "$SIM" "$out/capi_ios" "$MODEL" "$out/in.bin" "$CONF" "$ACCEL" > "$out/ios" ;;
     android)
         ndk="${ANDROID_NDK_HOME:-$(ls -d "$HOME"/Library/Android/sdk/ndk/* | sort -V | tail -1)}"
         cc="$(ls "$ndk"/toolchains/llvm/prebuilt/*/bin/clang)"

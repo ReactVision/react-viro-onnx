@@ -1,6 +1,6 @@
 // The C API from include/viro_onnx.h, linked against a built library (the xcframework
-// slice or a .so). capi MODEL INPUT.bin [CONF] prints the detections in the format of
-// tests/reference.py.
+// slice or a .so). capi MODEL INPUT.bin [CONF] [ACCEL] prints the detections in the
+// format of tests/reference.py, and the provider the session runs on to stderr.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,10 +16,12 @@ int main(int argc, char **argv) {
     if (fread(x, sizeof x, 1, f) != 1) return 1;
     fclose(f);
     float conf = argc > 3 ? (float)atof(argv[3]) : 0.25f;
-    if (!viro_onnx_load_file(argv[1], argv[1], VIRO_ONNX_CPU)) {
+    int accel = argc > 4 ? atoi(argv[4]) : VIRO_ONNX_CPU;
+    if (!viro_onnx_load_file(argv[1], argv[1], accel)) {
         fprintf(stderr, "%s\n", viro_onnx_last_error());
         return 1;
     }
+    fprintf(stderr, "provider %s\n", viro_onnx_provider(argv[1]));
     ViroDetection d[50];
     int n = viro_onnx_detect(argv[1], x, 640, conf, d, 50);
     if (n < 0) {
