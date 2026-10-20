@@ -1,0 +1,332 @@
+// viro_onnx: YOLOE object detection for ViroObjectDetector, shared by the iOS and
+// Android bridges through the C API in include/viro_onnx.h.
+//
+// The model is an end-to-end YOLOE export: input "images" [1, 3, N, N], output
+// "output0" [1, 300, 38], each proposal x1 y1 x2 y2 (pixels), confidence, class index,
+// then mask coefficients this core ignores. Class names come from the model's "names"
+// metadata ({0: 'person', 1: 'bicycle', ...}).
+
+import <mem>;
+import <string>;
+import <list>;
+import <regex>;
+import <atomic>;
+import <threading>;
+import <onnx>;
+
+const int VO_PROPOSALS = 300;
+const int VO_PROPOSAL_DIM = 38;
+const int VO_MAX_DETECTIONS = 50;
+const float VO_NMS_IOU = 0.45;
+
+const int VIRO_ONNX_CPU = 0;
+const int VIRO_ONNX_NNAPI_FP16 = 1;
+
+// Mirrors ViroDetection in include/viro_onnx.h.
+struct ViroDetection {
+    float x;
+    float y;
+    float width;
+    float height;
+    float confidence;
+    int class_index;
+    string label;
+}
+
+// A session and the detections running on it. viro_onnx_release_all marks it released;
+// the last detection to finish then frees it.
+struct _VoSession {
+    OnnxSession s;
+    int refs;
+    bool released;
+}
+
+// One model key. The class names outlive the session, so a label handed out by
+// viro_onnx_detect stays valid for the life of the process.
+struct _VoModel {
+    String key;
+    *_VoSession session;
+    List<String> names;
+    bool names_read;
+}
+
+List<*_VoModel> _vo_models;
+Mutex _vo_mutex;
+int _vo_ready;
+String _vo_err;
+
+void _vo_lock() {
+    if (atomic_load(&_vo_ready) != 2) {
+        if (atomic_cas(&_vo_ready, 0, 1)) {
+            Mutex_init(&_vo_mutex);
+            atomic_store(&_vo_ready, 2);
+        } else {
+            while (atomic_load(&_vo_ready) != 2) {}
+        }
+    }
+    Mutex_lock(&_vo_mutex);
+}
+
+void _vo_unlock() {
+    Mutex_unlock(&_vo_mutex);
+}
+
+// Call with the lock held.
+void _vo_fail(string what, string detail) {
+    String_clear(&_vo_err);
+    String_append(&_vo_err, what);
+    if (detail != null) {
+        String_append(&_vo_err, ": ");
+        String_append(&_vo_err, detail);
+    }
+}
+
+// Call with the lock held.
+*_VoModel _vo_find(string key) {
+    for (i in 0.._vo_models.size) {
+        *_VoModel m = _vo_models.data[i];
+        if (strcmp(m.key.data, key) == 0) return m;
+    }
+    return null;
+}
+
+// Ultralytics writes the class names as a Python dict literal. Every `N: 'name'` (or
+// "name") pair is taken; indices with no pair get an empty name.
+void _vo_parse_names(string raw, List<String>* out) {
+    Regex re = regex_compile("(\\d+):\\s*['\"]([^'\"]*)['\"]");
+    defer Regex_free(&re);
+    if (!re.ok) return;
+    List<int> idx;
+    defer List_free(&idx);
+    List<String> text;
+    defer List_free(&text);
+    int max = -1;
+    int64 pos = 0;
+    int64 n = (int64)strlen(raw);
+    while (pos < n) {
+        Match m;
+        if (Regex_search(&re, (string)((*uint8)raw + pos), &m) != 1) {
+            Match_free(&m);
+            break;
+        }
+        String num;
+        Match_group(&m, (string)((*uint8)raw + pos), 1, &num);
+        String name;
+        Match_group(&m, (string)((*uint8)raw + pos), 2, &name);
+        int64 end = (int64)m.end;
+        Match_free(&m);
+        int i = atoi(num.data);
+        String_free(&num);
+        idx.push(i);
+        text.push(name);
+        if (i > max) max = i;
+        if (end <= 0) end = 1;
+        pos = pos + end;
+    }
+    for (i in 0..max + 1) {
+        String empty;
+        String_append(&empty, "");
+        out.push(empty);
+    }
+    for (k in 0..idx.size) {
+        int i = idx.data[k];
+        if (i >= 0 && i <= max) {
+            String_free(&out.data[i]);
+            out.data[i] = text.data[k];
+        } else {
+            String_free(&text.data[k]);
+        }
+    }
+}
+
+// Opens a session for a model: from `path`, or from `data`/`len` when path is null.
+// NNAPI falls back to the CPU when the provider is missing or cannot take the graph.
+Result<OnnxSession, string> _vo_open(string path, *uint8 data, uint64 len, int accel) {
+    if (accel == VIRO_ONNX_NNAPI_FP16) {
+        OnnxOptions nn = OnnxOptions{provider: ONNX_NNAPI, nnapi_flags: ONNX_NNAPI_FP16, fallback: true};
+        Result<OnnxSession, string> r = path != null ? onnx_session(path, &nn) : onnx_session_bytes(data, len, &nn);
+        if (r.ok) return r;
+    }
+    OnnxOptions cpu = OnnxOptions{};
+    if (path != null) return onnx_session(path, &cpu);
+    return onnx_session_bytes(data, len, &cpu);
+}
+
+int _vo_load(string key, string path, *uint8 data, uint64 len, int accel) {
+    if (key == null) return 0;
+    _vo_lock();
+    defer _vo_unlock();
+    *_VoModel m = _vo_find(key);
+    if (m != null && m.session != null) return 1;
+    Result<OnnxSession, string> r = _vo_open(path, data, len, accel);
+    if (!r.ok) {
+        _vo_fail("viro_onnx: cannot load the model", r.error);
+        return 0;
+    }
+    if (m == null) {
+        m = alloc<_VoModel>(1);
+        String_append(&m.key, key);
+        _vo_models.push(m);
+    }
+    m.session = alloc<_VoSession>(1);
+    m.session.s = r.value;
+    if (!m.names_read) {
+        m.names_read = true;
+        String raw;
+        defer String_free(&raw);
+        if (m.session.s.metadata("names", &raw)) _vo_parse_names(raw.data, &m.names);
+    }
+    return 1;
+}
+
+int viro_onnx_load_file(string key, string path, int accel) {
+    if (path == null) return 0;
+    return _vo_load(key, path, null, 0, accel);
+}
+
+int viro_onnx_load_bytes(string key, *uint8 data, uint64 len, int accel) {
+    if (data == null) return 0;
+    return _vo_load(key, null, data, len, accel);
+}
+
+int viro_onnx_is_loaded(string key) {
+    if (key == null) return 0;
+    _vo_lock();
+    defer _vo_unlock();
+    *_VoModel m = _vo_find(key);
+    return m != null && m.session != null ? 1 : 0;
+}
+
+// Call with the lock held.
+void _vo_drop(*_VoSession s) {
+    s.refs = s.refs - 1;
+    if (s.released && s.refs == 0) {
+        s.s.release();
+        free((*void)s);
+    }
+}
+
+void viro_onnx_release_all() {
+    _vo_lock();
+    defer _vo_unlock();
+    for (i in 0.._vo_models.size) {
+        *_VoModel m = _vo_models.data[i];
+        if (m.session == null) continue;
+        m.session.released = true;
+        m.session.refs = m.session.refs + 1;
+        _vo_drop(m.session);
+        m.session = null;
+    }
+}
+
+float _vo_clamp01(float v) {
+    if (v < 0.0) return 0.0;
+    if (v > 1.0) return 1.0;
+    return v;
+}
+
+float _vo_iou(*ViroDetection a, *ViroDetection b) {
+    float ax2 = a.x + a.width;
+    float ay2 = a.y + a.height;
+    float bx2 = b.x + b.width;
+    float by2 = b.y + b.height;
+    float iw = (ax2 < bx2 ? ax2 : bx2) - (a.x > b.x ? a.x : b.x);
+    float ih = (ay2 < by2 ? ay2 : by2) - (a.y > b.y ? a.y : b.y);
+    if (iw < 0.0) iw = 0.0;
+    if (ih < 0.0) ih = 0.0;
+    float inter = iw * ih;
+    if (inter == 0.0) return 0.0;
+    float ua = a.width * a.height + b.width * b.height - inter;
+    return ua > 0.0 ? inter / ua : 0.0;
+}
+
+// Decodes the proposals, sorts them by confidence (stable) and keeps the ones greedy
+// NMS does not suppress, up to max_out.
+int _vo_decode(*float p, int input_size, float conf_threshold, *_VoModel m, *ViroDetection out, int max_out) {
+    ViroDetection[300] dets;
+    int n = 0;
+    float scale = 1.0 / (float)input_size;
+    for (i in 0..VO_PROPOSALS) {
+        *float q = p + i * VO_PROPOSAL_DIM;
+        float conf = q[4];
+        if (conf < conf_threshold) continue;
+        float x1 = _vo_clamp01(q[0] * scale);
+        float y1 = _vo_clamp01(q[1] * scale);
+        float x2 = _vo_clamp01(q[2] * scale);
+        float y2 = _vo_clamp01(q[3] * scale);
+        float w = x2 - x1;
+        float h = y2 - y1;
+        if (w <= 0.0 || h <= 0.0) continue;
+        int cls = (int)q[5];
+        string label = null;
+        if (cls >= 0 && cls < m.names.size) label = m.names.data[cls].data;
+        ViroDetection d = ViroDetection{x1, y1, w, h, conf, cls, label};
+        int j = n;
+        while (j > 0 && dets[j - 1].confidence < conf) {
+            dets[j] = dets[j - 1];
+            j--;
+        }
+        dets[j] = d;
+        n++;
+    }
+    bool[300] suppressed;
+    int kept = 0;
+    int cap = max_out < VO_MAX_DETECTIONS ? max_out : VO_MAX_DETECTIONS;
+    for (i in 0..n) {
+        if (kept >= cap) break;
+        if (suppressed[i]) continue;
+        out[kept] = dets[i];
+        kept++;
+        for (j in i + 1..n) {
+            if (!suppressed[j] && _vo_iou(&dets[i], &dets[j]) > VO_NMS_IOU) suppressed[j] = true;
+        }
+    }
+    return kept;
+}
+
+int viro_onnx_detect(string key, *float nchw, int input_size, float conf_threshold, *ViroDetection out, int max_out) {
+    if (key == null || nchw == null || input_size <= 0 || (out == null && max_out > 0)) return -1;
+    _vo_lock();
+    *_VoModel m = _vo_find(key);
+    if (m == null || m.session == null) {
+        _vo_fail("viro_onnx: no model loaded under", key);
+        _vo_unlock();
+        return -1;
+    }
+    *_VoSession s = m.session;
+    s.refs = s.refs + 1;
+    _vo_unlock();
+    defer {
+        _vo_lock();
+        _vo_drop(s);
+        _vo_unlock();
+    }
+
+    int64[4] shape = {1, 3, (int64)input_size, (int64)input_size};
+    Result<OnnxTensor, string> t = onnx_tensor_view(ONNX_FLOAT, (*void)nchw, &shape[0], 4);
+    if (!t.ok) return -1;
+    defer t.value.release();
+    string[1] names = {"images"};
+    string[1] outs = {"output0"};
+    Result<List<OnnxTensor>, string> r = s.s.run(&names[0], &t.value, 1, &outs[0], 1);
+    if (!r.ok) {
+        _vo_lock();
+        _vo_fail("viro_onnx: inference failed", r.error);
+        _vo_unlock();
+        return -1;
+    }
+    defer onnx_tensors_free(&r.value);
+    *OnnxTensor y = &r.value.data[0];
+    *float p = y.f32();
+    if (p == null || y.len() < (uint64)(VO_PROPOSALS * VO_PROPOSAL_DIM)) return 0;
+    if (max_out <= 0) return 0;
+    return _vo_decode(p, input_size, conf_threshold, m, out, max_out);
+}
+
+string viro_onnx_ort_version() {
+    return onnx_version();
+}
+
+string viro_onnx_last_error() {
+    return _vo_err.data != null ? _vo_err.data : "";
+}

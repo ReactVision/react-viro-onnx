@@ -1,0 +1,7 @@
+[package]
+name = "viro_onnx"
+version = "0.1.0"
+main = "src/viro_onnx.esk"
+
+[deps]
+onnx = { path = "../../../Github/eskiu-onnx" }

@@ -1,0 +1,163 @@
+// The JNI entry points of libviro_onnx.so, for com.reactvision.viroonnx.ViroONNXCore.
+// A JNI function is a C function pointer in the JNIEnv table whose first argument is the
+// JNIEnv itself, so each one is called as an Eskiu fn value whose env slot is the JNIEnv.
+
+import <mem>;
+import "viro_onnx.esk";
+
+const int _JNI_DeleteLocalRef = 23;
+const int _JNI_NewStringUTF = 167;
+const int _JNI_GetStringUTFChars = 169;
+const int _JNI_ReleaseStringUTFChars = 170;
+const int _JNI_GetArrayLength = 171;
+const int _JNI_SetObjectArrayElement = 174;
+const int _JNI_GetByteArrayElements = 184;
+const int _JNI_GetFloatArrayElements = 189;
+const int _JNI_ReleaseByteArrayElements = 192;
+const int _JNI_ReleaseFloatArrayElements = 197;
+
+const int _JNI_ABORT = 2;
+
+struct _JniRaw {
+    *void f;
+    *void env;
+}
+
+struct _JniGetStr { fn(*void, *uint8)->string f; }
+struct _JniRelStr { fn(*void, string)->void f; }
+struct _JniNewStr { fn(string)->*void f; }
+struct _JniLen { fn(*void)->int f; }
+struct _JniGetArr { fn(*void, *uint8)->*void f; }
+struct _JniRelArr { fn(*void, *void, int)->void f; }
+struct _JniSetObj { fn(*void, int, *void)->void f; }
+struct _JniDelRef { fn(*void)->void f; }
+
+_JniRaw _jni(*void env, int slot) {
+    ***void e = (***void)env;
+    return _JniRaw{(*e)[slot], env};
+}
+
+string _jni_chars(*void env, *void s) {
+    _JniRaw r = _jni(env, _JNI_GetStringUTFChars);
+    fn(*void, *uint8)->string r_f = ((*_JniGetStr)&r).f;
+    return r_f(s, null);
+}
+
+void _jni_release_chars(*void env, *void s, string c) {
+    _JniRaw r = _jni(env, _JNI_ReleaseStringUTFChars);
+    fn(*void, string)->void r_f = ((*_JniRelStr)&r).f;
+    r_f(s, c);
+}
+
+int _jni_len(*void env, *void a) {
+    _JniRaw r = _jni(env, _JNI_GetArrayLength);
+    fn(*void)->int r_f = ((*_JniLen)&r).f;
+    return r_f(a);
+}
+
+*void _jni_elems(*void env, int slot, *void a) {
+    _JniRaw r = _jni(env, slot);
+    fn(*void, *uint8)->*void r_f = ((*_JniGetArr)&r).f;
+    return r_f(a, null);
+}
+
+void _jni_release_elems(*void env, int slot, *void a, *void p, int mode) {
+    _JniRaw r = _jni(env, slot);
+    fn(*void, *void, int)->void r_f = ((*_JniRelArr)&r).f;
+    r_f(a, p, mode);
+}
+
+// ViroONNXCore.nativeLoad(String key, byte[] model, boolean nnapi): loads a model
+// from its bytes under key. True on success.
+uint8 Java_com_reactvision_viroonnx_ViroONNXCore_nativeLoad(*void env, *void cls, *void key, *void model, uint8 nnapi) {
+    if (key == null || model == null) return 0;
+    string k = _jni_chars(env, key);
+    if (k == null) return 0;
+    defer _jni_release_chars(env, key, k);
+    int n = _jni_len(env, model);
+    *uint8 bytes = (*uint8)_jni_elems(env, _JNI_GetByteArrayElements, model);
+    if (bytes == null) return 0;
+    int ok = viro_onnx_load_bytes(k, bytes, (uint64)n, nnapi != 0 ? VIRO_ONNX_NNAPI_FP16 : VIRO_ONNX_CPU);
+    _jni_release_elems(env, _JNI_ReleaseByteArrayElements, model, (*void)bytes, _JNI_ABORT);
+    return ok != 0 ? 1 : 0;
+}
+
+// ViroONNXCore.nativeIsLoaded(String key).
+uint8 Java_com_reactvision_viroonnx_ViroONNXCore_nativeIsLoaded(*void env, *void cls, *void key) {
+    if (key == null) return 0;
+    string k = _jni_chars(env, key);
+    if (k == null) return 0;
+    defer _jni_release_chars(env, key, k);
+    return viro_onnx_is_loaded(k) != 0 ? 1 : 0;
+}
+
+// ViroONNXCore.nativeDetect(String key, float[] nchw, int inputSize, float conf,
+// float[] boxes, String[] labels): writes each detection as x, y, width, height,
+// confidence, class index into boxes (6 floats each) and its class name, or null,
+// into labels. Returns the count, or -1 on failure.
+int Java_com_reactvision_viroonnx_ViroONNXCore_nativeDetect(*void env, *void cls, *void key, *void nchw, int input_size,
+        float conf, *void boxes, *void labels) {
+    if (key == null || nchw == null || boxes == null || labels == null) return -1;
+    if ((int64)_jni_len(env, nchw) < (int64)3 * (int64)input_size * (int64)input_size) return -1;
+    int max = _jni_len(env, boxes) / 6;
+    int nl = _jni_len(env, labels);
+    if (nl < max) max = nl;
+    if (max > VO_MAX_DETECTIONS) max = VO_MAX_DETECTIONS;
+    string k = _jni_chars(env, key);
+    if (k == null) return -1;
+    defer _jni_release_chars(env, key, k);
+    *float x = (*float)_jni_elems(env, _JNI_GetFloatArrayElements, nchw);
+    if (x == null) return -1;
+    ViroDetection[50] d;
+    int n = viro_onnx_detect(k, x, input_size, conf, &d[0], max);
+    _jni_release_elems(env, _JNI_ReleaseFloatArrayElements, nchw, (*void)x, _JNI_ABORT);
+    if (n <= 0) return n;
+    *float b = (*float)_jni_elems(env, _JNI_GetFloatArrayElements, boxes);
+    if (b == null) return -1;
+    for (i in 0..n) {
+        b[i * 6] = d[i].x;
+        b[i * 6 + 1] = d[i].y;
+        b[i * 6 + 2] = d[i].width;
+        b[i * 6 + 3] = d[i].height;
+        b[i * 6 + 4] = d[i].confidence;
+        b[i * 6 + 5] = (float)d[i].class_index;
+    }
+    _jni_release_elems(env, _JNI_ReleaseFloatArrayElements, boxes, (*void)b, 0);
+    for (i in 0..n) {
+        *void s = null;
+        if (d[i].label != null) {
+            _JniRaw r = _jni(env, _JNI_NewStringUTF);
+            fn(string)->*void r_f = ((*_JniNewStr)&r).f;
+            s = r_f(d[i].label);
+            if (s == null) return -1;
+        }
+        _JniRaw set = _jni(env, _JNI_SetObjectArrayElement);
+        fn(*void, int, *void)->void set_f = ((*_JniSetObj)&set).f;
+        set_f(labels, i, s);
+        if (s != null) {
+            _JniRaw del = _jni(env, _JNI_DeleteLocalRef);
+            fn(*void)->void del_f = ((*_JniDelRef)&del).f;
+            del_f(s);
+        }
+    }
+    return n;
+}
+
+// ViroONNXCore.nativeReleaseAll().
+void Java_com_reactvision_viroonnx_ViroONNXCore_nativeReleaseAll(*void env, *void cls) {
+    viro_onnx_release_all();
+}
+
+// ViroONNXCore.nativeOrtVersion().
+*void Java_com_reactvision_viroonnx_ViroONNXCore_nativeOrtVersion(*void env, *void cls) {
+    _JniRaw r = _jni(env, _JNI_NewStringUTF);
+    fn(string)->*void r_f = ((*_JniNewStr)&r).f;
+    return r_f(viro_onnx_ort_version());
+}
+
+// ViroONNXCore.nativeLastError().
+*void Java_com_reactvision_viroonnx_ViroONNXCore_nativeLastError(*void env, *void cls) {
+    _JniRaw r = _jni(env, _JNI_NewStringUTF);
+    fn(string)->*void r_f = ((*_JniNewStr)&r).f;
+    return r_f(viro_onnx_last_error());
+}
