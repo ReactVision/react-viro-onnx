@@ -1,4 +1,4 @@
 # eskiu.lock: written by eskiuc (eskiuc fetch updates it); do not edit.
 gpu	git	https://github.com/eskiu-lang/gpu	v0.1.0	c99dfbcc96401a2c206f927784abe344db4d0a6c
-onnx	git	https://github.com/eskiu-lang/onnx	v0.1.0	e8897b07c83ec53b21d88424e5a84b35c8741f14
+onnx	git	https://github.com/eskiu-lang/onnx	v0.1.0	edf7b335211bb2e3db448e8de2d3e26b2f1e3df3
 viro_onnx	root	.

@@ -27,7 +27,8 @@ typedef struct ViroDetection {
 // Hardware acceleration for viro_onnx_load_*.
 enum {
     VIRO_ONNX_CPU = 0,
-    VIRO_ONNX_NNAPI_FP16 = 1  // Android NNAPI with FP16, falling back to the CPU
+    VIRO_ONNX_NNAPI_FP16 = 1, // Android NNAPI with FP16, falling back to the CPU
+    VIRO_ONNX_COREML = 2      // CoreML (GPU and Neural Engine), falling back to the CPU
 };
 
 // Loads a model under `key` once; later calls with the same key do nothing.

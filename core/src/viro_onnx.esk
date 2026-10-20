@@ -21,6 +21,7 @@ const float VO_NMS_IOU = 0.45;
 
 const int VIRO_ONNX_CPU = 0;
 const int VIRO_ONNX_NNAPI_FP16 = 1;
+const int VIRO_ONNX_COREML = 2;
 
 // Mirrors ViroDetection in include/viro_onnx.h.
 struct ViroDetection {
@@ -140,11 +141,15 @@ void _vo_parse_names(string raw, List<String>* out) {
 }
 
 // Opens a session for a model: from `path`, or from `data`/`len` when path is null.
-// NNAPI falls back to the CPU when the provider is missing or cannot take the graph.
+// NNAPI and CoreML fall back to the CPU when the provider is missing or cannot take the
+// graph. CoreML only as an MLProgram (iOS 15 on): in the older NeuralNetwork format the GPU
+// and the Neural Engine compute in float16 and YOLOE's outputs come out wrong.
 Result<OnnxSession, string> _vo_open(string path, *uint8 data, uint64 len, int accel) {
-    if (accel == VIRO_ONNX_NNAPI_FP16) {
-        OnnxOptions nn = OnnxOptions{provider: ONNX_NNAPI, nnapi_flags: ONNX_NNAPI_FP16, fallback: true};
-        Result<OnnxSession, string> r = path != null ? onnx_session(path, &nn) : onnx_session_bytes(data, len, &nn);
+    if (accel == VIRO_ONNX_NNAPI_FP16 || accel == VIRO_ONNX_COREML) {
+        OnnxOptions hw = accel == VIRO_ONNX_COREML
+            ? OnnxOptions{provider: ONNX_COREML, coreml_format: "MLProgram", fallback: true}
+            : OnnxOptions{provider: ONNX_NNAPI, nnapi_flags: ONNX_NNAPI_FP16, fallback: true};
+        Result<OnnxSession, string> r = path != null ? onnx_session(path, &hw) : onnx_session_bytes(data, len, &hw);
         if (r.ok) return r;
     }
     OnnxOptions cpu = OnnxOptions{};
