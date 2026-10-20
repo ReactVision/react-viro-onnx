@@ -5,3 +5,5 @@ ios/dist/
 
 # npm pack output
 *.tgz
+android/src/main/jniLibs/
+core/build/
