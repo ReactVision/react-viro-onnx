@@ -27,7 +27,10 @@ Pod::Spec.new do |s|
   s.prepare_command = 'bash ../scripts/download_onnxruntime.sh'
 
   # Vendored dynamic xcframework — no static/dynamic conflict with use_frameworks! :linkage => :dynamic
-  s.vendored_frameworks = 'dist/Frameworks/onnxruntime.xcframework'
+  # ViroONNXCore.xcframework is the detection core (core/, written in Eskiu), a static library
+  # that only exports the viro_onnx_* C API. It ships prebuilt in the npm package
+  # (`npm run build:core` before `npm pack`).
+  s.vendored_frameworks = ['dist/Frameworks/onnxruntime.xcframework', 'dist/ViroONNXCore.xcframework']
 
   s.pod_target_xcconfig = {
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
@@ -36,6 +39,7 @@ Pod::Spec.new do |s|
     # own compilation unit — add the parent dir explicitly so the compiler can find
     # onnxruntime.xcframework/ios-arm64/onnxruntime.framework/Headers/*.h
     'FRAMEWORK_SEARCH_PATHS'      => '$(inherited) "$(PODS_TARGET_SRCROOT)/dist/Frameworks"',
+    'HEADER_SEARCH_PATHS'         => '$(inherited) "$(PODS_TARGET_SRCROOT)/../core/include"',
   }
 
   # No React or ViroReact pod dependencies — this is a plain iOS framework.
