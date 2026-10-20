@@ -25,6 +25,8 @@
     "ios/ViroONNX.mm",
     "ios/ViroONNXModule.mm",
     "ios/ViroReactONNX.podspec",
+    "ios/dist/ViroONNXCore.xcframework",
+    "core/include",
     "android/build.gradle",
     "android/src",
     "scripts/export_text_model.py",
@@ -42,7 +44,8 @@
   "scripts": {
     "setup": "bash scripts/download_onnxruntime.sh",
     "build": "tsc && npm run build:plugin",
-    "build:plugin": "tsc -p plugin/tsconfig.json"
+    "build:plugin": "tsc -p plugin/tsconfig.json",
+    "build:core": "bash scripts/build_core.sh"
   },
   "keywords": [
     "react-native",
