@@ -1,6 +1,6 @@
 {
   "name": "@reactvision/react-viro-onnx",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "ONNX Runtime inference provider for @reactvision/react-viro ViroObjectDetector",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -26,6 +26,7 @@
     "ios/ViroONNXModule.mm",
     "ios/ViroReactONNX.podspec",
     "android/build.gradle",
+    "android/consumer-rules.pro",
     "android/src",
     "scripts/export_text_model.py",
     "scripts/download_onnxruntime.sh",

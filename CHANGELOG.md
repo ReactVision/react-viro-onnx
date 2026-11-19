@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3
+
+### Fixed
+
+- **Android: the detector no longer crashes in a release build with R8.** ONNX Runtime ships no R8 rules, and its JNI library builds `TensorInfo`, `OrtException`, `OnnxModelMetadata` and other classes through constructors no Java code calls, so R8 removed them and a model load or a detection aborted the app natively. Expo SDK 58 turns R8 on for release builds by default (`android.enableMinifyInReleaseBuilds`), so an app upgrading to it hit this without changing anything. The library now ships consumer rules (`android/consumer-rules.pro`) that keep `ai.onnxruntime.**` and its own native methods.
+
 ## 1.0.2
 
 ### Fixed
