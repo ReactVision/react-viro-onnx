@@ -1,6 +1,6 @@
 {
   "name": "@reactvision/react-viro-onnx",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "ONNX Runtime inference provider for @reactvision/react-viro ViroObjectDetector",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -25,6 +25,8 @@
     "ios/ViroONNX.mm",
     "ios/ViroONNXModule.mm",
     "ios/ViroReactONNX.podspec",
+    "ios/dist/ViroONNXCore.xcframework",
+    "core/include",
     "android/build.gradle",
     "android/consumer-rules.pro",
     "android/src",
@@ -43,7 +45,8 @@
   "scripts": {
     "setup": "bash scripts/download_onnxruntime.sh",
     "build": "tsc && npm run build:plugin",
-    "build:plugin": "tsc -p plugin/tsconfig.json"
+    "build:plugin": "tsc -p plugin/tsconfig.json",
+    "build:core": "bash scripts/build_core.sh"
   },
   "keywords": [
     "react-native",
